@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bijoy GPT</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <h1>GD Team OLLAMA Assistant</h1>
+
+    <div id="main-content-wrapper">
+        <div id="chat-section">
+            <h2>Chat History</h2>
+            <div id="chat-container"></div>
+            <div id="input-section">
+                <textarea id="user-input" placeholder="Type your message, or a prompt for file analysis/generation."></textarea>
+                <div class="button-row">
+                    <button id="chatButton" onclick="handleAction('chat')">Chat</button>
+                    <button id="analyzeCsvButton" onclick="handleAction('analyze_csv')" disabled>Analyze CSV</button>
+                    <button id="analyzePdfButton" onclick="handleAction('analyze_pdf')" disabled>Analyze PDF</button>
+                    <button id="generateCsvButton" onclick="handleAction('generate_csv')">Generate CSV</button>
+                    <button id="analyzeImageButton" onclick="handleAction('analyze_image')" disabled>Analyze Image</button>
+
+                    <input type="file" id="attachFileInput" accept="image/*,.csv,.pdf" style="display: none;">
+                    <button onclick="document.getElementById('attachFileInput').click()" class="icon-button">
+                        <i class="fas fa-paperclip"></i> Attach File
+                    </button>
+                    <button onclick="clearSession()">New Chat</button>
+                </div>
+                <div id="file-status" style="margin-top: 10px; font-size: 0.9em; color: #555;"></div>
+            </div>
+        </div>
+
+        <div id="response-section">
+            <div id="response-header">
+                <h2>Ollama Response</h2>
+                <div>
+                    <button id="copy-button" onclick="copyResponse()">Copy</button>
+                    <span id="copy-status">Copied!</span>
+                </div>
+            </div>
+            <div id="ollama-response" class="formatted-output" placeholder="Ollama's response will appear here..."></div>
+
+            <div id="response-nav">
+                <button id="prevResponse" onclick="navigateResponse(-1)" disabled>&larr;</button>
+                <span id="response-counter">0/0</span>
+                <button id="nextResponse" onclick="navigateResponse(1)" disabled>&rarr;</button>
+            </div>
+            <div id="download-container" style="margin-top: 15px; text-align: center;"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        const chatContainer = document.getElementById('chat-container');
+        const userInput = document.getElementById('user-input');
+        const ollamaResponseDiv = document.getElementById('ollama-response');
+        const copyStatusSpan = document.getElementById('copy-status');
+        const attachFileInput = document.getElementById('attachFileInput');
+        const fileStatusDiv = document.getElementById('file-status');
+        const downloadContainer = document.getElementById('download-container');
+
+        const analyzeCsvButton = document.getElementById('analyzeCsvButton');
+        const analyzePdfButton = document.getElementById('analyzePdfButton');
+        const analyzeImageButton = document.getElementById('analyzeImageButton');
+        const chatButton = document.getElementById('chatButton');
+        const generateCsvButton = document.getElementById('generateCsvButton');
+        const prevResponseButton = document.getElementById('prevResponse');
+        const nextResponseButton = document.getElementById('nextResponse');
+        const responseCounterSpan = document.getElementById('response-counter');
+
+        let currentSessionId = localStorage.getItem('chatSessionId');
+        console.log("Initial sessionId:", currentSessionId || "None (new session will be created)");
+
+        let attachedFile = {
+            type: null,
+            data: null,
+            name: null
+        };
+
+        let responseHistory = [];
+        let currentResponseIndex = -1;
+
+        function updateButtonStates() {
+            analyzeCsvButton.disabled = true;
+            analyzePdfButton.disabled = true;
+            analyzeImageButton.disabled = true;
+
+            if (attachedFile.type === 'csv' && attachedFile.data) {
+                analyzeCsvButton.disabled = false;
+            } else if (attachedFile.type === 'image' && attachedFile.data) {
+                analyzeImageButton.disabled = false;
+            } else if (attachedFile.type === 'pdf' && attachedFile.data) {
+                analyzePdfButton.disabled = false;
+            }
+
+            prevResponseButton.disabled = currentResponseIndex <= 0;
+            nextResponseButton.disabled = currentResponseIndex >= responseHistory.length - 1;
+            responseCounterSpan.textContent = responseHistory.length > 0 ? `${currentResponseIndex + 1}/${responseHistory.length}` : '0/0';
+        }
+
+        function showResponse(index) {
+            if (index >= 0 && index < responseHistory.length) {
+                const responseItem = responseHistory[index];
+                
+                ollamaResponseDiv.innerHTML = marked.parse(responseItem.text);
+                ollamaResponseDiv.scrollTop = 0;
+                downloadContainer.innerHTML = '';
+                if (responseItem.fileContent) {
+                    const a = document.createElement('a');
+                    a.href = responseItem.fileContent.startsWith('data:image') ? responseItem.fileContent : URL.createObjectURL(new Blob([responseItem.fileContent], { type: responseItem.fileType }));
+                    a.download = responseItem.fileName;
+                    a.textContent = `Download ${responseItem.fileName}`;
+                    a.style.cssText = `
+                        display: block;
+                        margin-top: 10px;
+                        padding: 8px 15px;
+                        background-color: #28a745;
+                        color: white;
+                        text-decoration: none;
+                        border-radius: 5px;
+                        cursor: pointer;
+                        text-align: center;
+                    `;
+                    downloadContainer.appendChild(a);
+                    if (!responseItem.fileContent.startsWith('data:image')) {
+                        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+                    }
+                }
+                currentResponseIndex = index;
+                updateButtonStates();
+            }
+        }
+        
+        function navigateResponse(direction) {
+            const newIndex = currentResponseIndex + direction;
+            showResponse(newIndex);
+        }
+
+        attachFileInput.addEventListener('change', handleFileLoad);
+        userInput.addEventListener('paste', handlePaste);
+
+        function triggerDownload(data, filename, type) {
+            console.log(`[DOWNLOAD] Attempting to trigger download for ${filename} (${type}). Data length: ${data.length}`);
+            const blob = new Blob([data], { type: type });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.textContent = `Download ${filename}`;
+            a.style.cssText = `
+                display: block;
+                margin-top: 10px;
+                padding: 8px 15px;
+                background-color: #28a745;
+                color: white;
+                text-decoration: none;
+                border-radius: 5px;
+                cursor: pointer;
+                text-align: center;
+            `;
+            downloadContainer.innerHTML = '';
+            downloadContainer.appendChild(a);
+            console.log(`[DOWNLOAD] Download link created. User needs to click "${filename}".`);
+        }
+
+        function triggerImageDownload(base64Data, filename) {
+            console.log(`[DOWNLOAD] Attempting to trigger image download for ${filename}. Data length: ${base64Data.length}`);
+            const a = document.createElement('a');
+            a.href = base64Data;
+            a.download = filename;
+            a.textContent = `Download ${filename}`;
+            a.style.cssText = `
+                display: block;
+                margin-top: 10px;
+                padding: 8px 15px;
+                background-color: #28a745;
+                color: white;
+                text-decoration: none;
+                border-radius: 5px;
+                cursor: pointer;
+                text-align: center;
+            `;
+            downloadContainer.innerHTML = '';
+            downloadContainer.appendChild(a);
+            console.log(`[DOWNLOAD] Image download link created. User needs to click "${filename}".`);
+        }
+        
+        async function handleFileLoad(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                fileStatusDiv.textContent = '';
+                attachedFile = { type: null, data: null, name: null };
+                console.log("[FILE LOAD] No file selected. Clearing attachedFile state.");
+                updateButtonStates();
+                return;
+            }
+            console.log(`[FILE LOAD] Selected file: ${file.name}, Type: ${file.type}, Size: ${file.size} bytes`);
+            fileStatusDiv.textContent = `Reading ${file.name}...`;
+            attachedFile = { type: null, data: null, name: null };
+
+            const reader = new FileReader();
+            reader.onloadstart = () => { console.log("[FILE LOAD] FileReader: Load start."); };
+            reader.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const percent = (e.loaded / e.total) * 100;
+                    fileStatusDiv.textContent = `Reading ${file.name}... ${percent.toFixed(0)}%`;
+                }
+            };
+            reader.onerror = (e) => {
+                console.error("[FILE LOAD] FileReader Error:", e);
+                fileStatusDiv.textContent = `Error reading file: ${file.name}.`;
+                attachedFile = { type: null, data: null, name: null };
+                event.target.value = '';
+                updateButtonStates();
+            };
+
+            reader.onload = async (e) => {
+                console.log("[FILE LOAD] FileReader: Load complete. File content available.");
+                const fileContent = e.target.result;
+                let fileInfo = '';
+                if (file.type.startsWith('image/')) {
+                    attachedFile.type = 'image';
+                    attachedFile.data = fileContent.split(',')[1];
+                    fileInfo = `Image "${file.name}" loaded. Click **Analyze Image** to describe it, or **Generate CSV** to extract data.`;
+                } else if (file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv')) {
+                    attachedFile.type = 'csv';
+                    attachedFile.data = fileContent;
+                    fileInfo = `CSV "${file.name}" loaded. Click **Analyze CSV** to analyze it, or **Generate CSV** to extract data.`;
+                } else if (file.type === 'application/pdf') {
+                    attachedFile.type = 'pdf';
+                    attachedFile.data = fileContent.split(',')[1];
+                    fileInfo = `PDF "${file.name}" loaded. Click **Analyze PDF** to summarize it, or **Generate CSV** to extract data.`;
+                } else {
+                    fileStatusDiv.textContent = 'Unsupported file type. Please attach a supported file.';
+                    attachedFile = { type: null, data: null, name: null };
+                    event.target.value = '';
+                    updateButtonStates();
+                    return;
+                }
+                attachedFile.name = file.name;
+                fileStatusDiv.textContent = fileInfo;
+                console.log(`[FILE LOAD] "${file.name}" loaded as type "${attachedFile.type}".`);
+                event.target.value = '';
+                updateButtonStates();
+            };
+            if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+                reader.readAsDataURL(file);
+            } else {
+                reader.readAsText(file);
+            }
+        }
+
+        async function handlePaste(event) {
+            const clipboardData = event.clipboardData || window.clipboardData;
+            if (!clipboardData) return;
+            event.preventDefault();
+            let pastedText = clipboardData.getData('text/plain');
+            let pastedHtml = clipboardData.getData('text/html');
+            let processedContent = pastedText;
+            if (pastedHtml) {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = pastedHtml;
+                const tables = tempDiv.querySelectorAll('table');
+                if (tables.length > 0) {
+                    processedContent = tableToCsv(tables[0]);
+                    processedContent = "Here's some tabular data (CSV format):\n" + processedContent;
+                }
+            }
+            userInput.value = userInput.value + processedContent;
+        }
+
+        function tableToCsv(table) {
+            let csv = [];
+            const rows = table.querySelectorAll('tr');
+            rows.forEach(row => {
+                const rowData = [];
+                const cols = row.querySelectorAll('td, th');
+                cols.forEach(col => {
+                    let cellText = col.innerText.trim();
+                    if (cellText.includes(',') || cellText.includes('"') || cellText.includes('\n')) {
+                        cellText = `"${cellText.replace(/"/g, '""')}"`;
+                    }
+                    rowData.push(cellText);
+                });
+                csv.push(rowData.join(','));
+            });
+            return csv.join('\n');
+        }
+        
+        async function processFileGenerationResponse(data) {
+            const fileType = data.fileType;
+            const generationPrompt = data.generationPrompt;
+            const responseSessionId = data.sessionId;
+            ollamaResponseDiv.innerHTML = `Ollama requested to generate a ${fileType}. Processing...`;
+            appendMessage('system', `Ollama requested to generate a ${fileType}: "${generationPrompt}".`);
+            let fileGenerationResponse;
+            try {
+                if (fileType === 'csv') {
+                    console.log(`[FRONTEND] Calling /generate-csv with prompt: "${generationPrompt}" and Session ID: "${responseSessionId}"`);
+                    fileGenerationResponse = await fetch('http://localhost:3000/generate-csv', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt: generationPrompt, sessionId: responseSessionId })
+                    });
+                    if (!fileGenerationResponse.ok) {
+                        const errorData = await fileGenerationResponse.json();
+                        throw new Error(`Failed to generate CSV. ${errorData.message || ''}`);
+                    }
+                    const csvData = await fileGenerationResponse.json();
+                    
+                    const rawCsvText = csvData.csvContent || csvData.response || "Generated CSV is empty or not in expected format.";
+                    ollamaResponseDiv.innerHTML = `<pre>${rawCsvText}</pre>`;
+                    ollamaResponseDiv.scrollTop = 0;
+                    
+                    const chatHistoryText = `CSV generated: "${csvData.fileName}". Click download link for file.`;
+                    appendMessage('assistant', chatHistoryText);
+                    triggerDownload(csvData.csvContent, csvData.fileName || 'generated_data.csv', 'text/csv');
+                    responseHistory.push({
+                        text: rawCsvText,
+                        fileContent: csvData.csvContent,
+                        fileName: csvData.fileName || 'generated_data.csv',
+                        fileType: 'text/csv'
+                    });
+                } else if (fileType === 'image') {
+                    console.log(`[FRONTEND] Calling /generate-image with prompt: "${generationPrompt}" and Session ID: "${responseSessionId}"`);
+                    fileGenerationResponse = await fetch('http://localhost:3000/generate-image', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt: generationPrompt, sessionId: responseSessionId })
+                    });
+                    if (!fileGenerationResponse.ok) {
+                        const errorData = await fileGenerationResponse.json();
+                        throw new Error(`Failed to generate image. ${errorData.message || ''}`);
+                    }
+                    const imageData = await fileGenerationResponse.json();
+
+                    const imageHtml = imageData.image ? `<img src="${imageData.image}" alt="Generated Image" style="max-width:100%; height:auto;">` : `Image data could not be displayed.`;
+                    ollamaResponseDiv.innerHTML = imageHtml;
+                    ollamaResponseDiv.scrollTop = 0;
+
+                    const chatHistoryText = `Image generated: "${imageData.fileName}". Click download link for file.`;
+                    appendMessage('assistant', chatHistoryText);
+                    triggerDownload(imageData.image, imageData.fileName || 'generated_image.png', 'image/png');
+                    responseHistory.push({
+                        text: `[Image generated: ${imageData.fileName}]`,
+                        fileContent: imageData.image,
+                        fileName: imageData.fileName || 'generated_image.png',
+                        fileType: 'image/png'
+                    });
+                } else {
+                    throw new Error(`Unsupported file type requested: ${fileType}`);
+                }
+                currentResponseIndex = responseHistory.length - 1;
+                updateButtonStates();
+            } catch (error) {
+                console.error(`Error during ${fileType} generation/processing:`, error);
+                ollamaResponseDiv.innerHTML = `Error generating/processing ${fileType}: ${error.message}`;
+                appendMessage('system', `Error generating/processing ${fileType}.`);
+                updateButtonStates();
+            }
+        }
+
+        async function handleAction(actionType) {
+            const question = userInput.value.trim();
+            ollamaResponseDiv.innerHTML = 'Thinking...';
+            copyStatusSpan.style.display = 'none';
+            fileStatusDiv.textContent = '';
+            downloadContainer.innerHTML = '';
+            if (!currentSessionId) {
+                console.log("[HANDLE ACTION] No existing sessionId. Attempting to initialize session via /chat for first request.");
+                try {
+                    const initResponse = await fetch('http://localhost:3000/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ question: "Initializing session.", sessionId: null })
+                    });
+                    const initData = await initResponse.json();
+                    if (initData.sessionId) {
+                        currentSessionId = initData.sessionId;
+                        localStorage.setItem('chatSessionId', currentSessionId);
+                        console.log("[HANDLE ACTION] Session initialized successfully:", currentSessionId);
+                    } else {
+                        throw new Error("Backend did not return a sessionId during initialization.");
+                    }
+                } catch (error) {
+                    console.error("[HANDLE ACTION] Error during session initialization:", error);
+                    fileStatusDiv.textContent = `Error: Could not initialize chat session. Check server logs.`;
+                    return;
+                }
+            }
+            let endpoint;
+            let requestBody;
+            let displayMessage;
+            try {
+                switch (actionType) {
+                    case 'chat':
+                        if (attachedFile.data) {
+                            fileStatusDiv.textContent = "To use chat with a file, please click 'Analyze CSV', 'Analyze PDF' or 'Analyze Image'. This button is for text-only chat.";
+                            ollamaResponseDiv.innerHTML = "Action blocked: Chat button is for text-only input.";
+                            return;
+                        }
+                        if (!question) {
+                            fileStatusDiv.textContent = "Please type a message for chat.";
+                            return;
+                        }
+                        endpoint = 'http://localhost:3000/chat';
+                        requestBody = { question: question, sessionId: currentSessionId };
+                        displayMessage = question;
+                        console.log(`[HANDLE ACTION] Routing to /chat. Prompt: "${question}".`);
+                        break;
+                    case 'analyze_csv':
+                        if (attachedFile.type !== 'csv' || !attachedFile.data) {
+                            fileStatusDiv.textContent = "Please attach a CSV file first, then type your analysis prompt, and click 'Analyze CSV'.";
+                            ollamaResponseDiv.innerHTML = "Action blocked: No CSV file attached or wrong file type.";
+                            return;
+                        }
+                        if (!question) {
+                            fileStatusDiv.textContent = "Please type a prompt for CSV analysis (e.g., 'summarize this data').";
+                            return;
+                        }
+                        endpoint = 'http://localhost:3000/analyze-csv';
+                        requestBody = { csv: attachedFile.data, prompt: question, sessionId: currentSessionId };
+                        displayMessage = `Analyze CSV: ${attachedFile.name}. Prompt: "${question}"`;
+                        console.log(`[HANDLE ACTION] Routing to /analyze-csv.`);
+                        attachedFile = { type: null, data: null, name: null };
+                        break;
+                    case 'analyze_pdf':
+                        if (attachedFile.type !== 'pdf' || !attachedFile.data) {
+                            fileStatusDiv.textContent = "Please attach a PDF file first, then type your analysis prompt, and click 'Analyze PDF'.";
+                            ollamaResponseDiv.innerHTML = "Action blocked: No PDF file attached or wrong file type.";
+                            return;
+                        }
+                        if (!question) {
+                            fileStatusDiv.textContent = "Please type a prompt for PDF analysis (e.g., 'summarize the document').";
+                            return;
+                        }
+                        endpoint = 'http://localhost:3000/analyze-pdf';
+                        requestBody = { pdf: attachedFile.data, prompt: question, sessionId: currentSessionId };
+                        displayMessage = `Analyze PDF: ${attachedFile.name}. Prompt: "${question}"`;
+                        console.log(`[HANDLE ACTION] Routing to /analyze-pdf.`);
+                        attachedFile = { type: null, data: null, name: null };
+                        break;
+                    case 'generate_csv':
+                        if (attachedFile.data) {
+                            fileStatusDiv.textContent = "To generate CSV from an attached file, use 'Analyze CSV' or 'Analyze PDF' buttons with the appropriate prompt. This button is for generating CSV from a text prompt (no file).";
+                            ollamaResponseDiv.innerHTML = "Action blocked: 'Generate CSV' (no file) cannot be used with an attached file.";
+                            return;
+                        }
+                        if (!question) {
+                            fileStatusDiv.textContent = "Please type a prompt for CSV generation (e.g., 'Generate a CSV of 5 fictional employees').";
+                            return;
+                        }
+                        endpoint = 'http://localhost:3000/generate-csv';
+                        requestBody = { prompt: question, sessionId: currentSessionId };
+                        displayMessage = `Generate CSV: "${question}"`;
+                        console.log(`[HANDLE ACTION] Routing to /generate-csv.`);
+                        break;
+                    case 'analyze_image':
+                        if (attachedFile.type !== 'image' || !attachedFile.data) {
+                            fileStatusDiv.textContent = "Please attach an Image file first, then type your analysis prompt, and click 'Analyze Image'.";
+                            ollamaResponseDiv.innerHTML = "Action blocked: No image file attached or wrong file type.";
+                            return;
+                        }
+                        if (!question) {
+                            fileStatusDiv.textContent = "Please type a prompt for Image analysis (e.g., 'describe this image').";
+                            return;
+                        }
+                        endpoint = 'http://localhost:3000/analyze-image';
+                        requestBody = { image: attachedFile.data, prompt: question, sessionId: currentSessionId };
+                        displayMessage = `Analyze Image: ${attachedFile.name}. Prompt: "${question}"`;
+                        console.log(`[HANDLE ACTION] Routing to /analyze-image.`);
+                        attachedFile = { type: null, data: null, name: null };
+                        break;
+                    default:
+                        console.error("[HANDLE ACTION] Unknown action type:", actionType);
+                        ollamaResponseDiv.innerHTML = "Error: Invalid action.";
+                        return;
+                }
+                appendMessage('user', displayMessage);
+                userInput.value = '';
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+                if (!response.ok) {
+                    const errorResponse = await response.json();
+                    throw new Error(`HTTP error! Status: ${response.status}. Message: ${errorResponse.response || errorResponse.message || 'Unknown error.'}`);
+                }
+                const data = await response.json();
+                console.log("[HANDLE ACTION] Backend response data:", data);
+                if (data.sessionId) {
+                    currentSessionId = data.sessionId;
+                    localStorage.setItem('chatSessionId', currentSessionId);
+                    console.log("[HANDLE ACTION] Updated sessionId:", currentSessionId);
+                }
+                if (data.action === 'generate_file') {
+                    await processFileGenerationResponse(data);
+                } else {
+                    let assistantResponseText = data.response || data.answer || "No specific response text.";
+                    let fileContent = null;
+                    let fileName = null;
+                    let fileType = null;
+                    if (data.csvContent) {
+                        fileContent = data.csvContent;
+                        fileName = 'analyzed_data.csv';
+                        fileType = 'text/csv';
+                        assistantResponseText = `Analysis complete. A CSV file is available for download.`;
+                    } else if (data.image) {
+                        fileContent = data.image;
+                        fileName = 'analyzed_image.png';
+                        fileType = 'image/png';
+                        assistantResponseText = `Analysis complete. An image file is available for download.`;
+                    } else if (data.response) {
+                        assistantResponseText = data.response;
+                    } else if (data.answer) {
+                        assistantResponseText = data.answer;
+                    }
+                    
+                    ollamaResponseDiv.innerHTML = marked.parse(assistantResponseText);
+                    ollamaResponseDiv.scrollTop = 0;
+                    appendMessage('assistant', assistantResponseText);
+                    responseHistory.push({
+                        text: assistantResponseText,
+                        fileContent: fileContent,
+                        fileName: fileName,
+                        fileType: fileType
+                    });
+                    currentResponseIndex = responseHistory.length - 1;
+                    updateButtonStates();
+                    if (fileContent && fileName && fileType) {
+                        if (fileType === 'image/png') {
+                            triggerImageDownload(fileContent, fileName);
+                        } else {
+                            triggerDownload(fileContent, fileName, fileType);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("[HANDLE ACTION] Error during backend request:", error);
+                appendMessage('system', `Error: ${error.message || 'Could not get response.'}`);
+                ollamaResponseDiv.innerHTML = `Error: ${error.message || 'Could not get response.'}`;
+                fileStatusDiv.textContent = `Error: ${error.message || 'Request failed.'}`;
+            }
+        }
+        function appendMessage(sender, text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            messageDiv.textContent = text;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        async function copyResponse() {
+            try {
+                // Get the HTML content from the div, which includes formatting tags
+                const formattedHtml = ollamaResponseDiv.innerHTML;
+                
+                // Get the plain text content from the original response history,
+                // which preserves the raw '\n' newline characters.
+                // This is more reliable than ollamaResponseDiv.textContent which can be inconsistent.
+                const plainText = responseHistory[currentResponseIndex].text;
+
+                // Use the advanced clipboard API to write both formats
+                await navigator.clipboard.write([
+                    new ClipboardItem({
+                        "text/plain": new Blob([plainText], { type: "text/plain" }),
+                        "text/html": new Blob([formattedHtml], { type: "text/html" })
+                    })
+                ]);
+
+                copyStatusSpan.style.display = 'inline';
+                setTimeout(() => {
+                    copyStatusSpan.style.display = 'none';
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy formatted text: ', err);
+                // Fallback to plain text copy if the above fails (e.g., in older browsers)
+                try {
+                    await navigator.clipboard.writeText(responseHistory[currentResponseIndex].text);
+                    copyStatusSpan.style.display = 'inline';
+                    setTimeout(() => {
+                        copyStatusSpan.style.display = 'none';
+                    }, 2000);
+                    console.warn('Could not copy formatted text, fell back to plain text.');
+                } catch (fallbackErr) {
+                    console.error('Failed to copy even plain text: ', fallbackErr);
+                }
+            }
+        }
+        async function clearSession() {
+            if (currentSessionId) {
+                try {
+                    await fetch('http://localhost:3000/clear-chat-history', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sessionId: currentSessionId })
+                    });
+                    console.log("Server history cleared for session:", currentSessionId);
+                } catch (error) {
+                    console.error("Error clearing server history:", error);
+                }
+            }
+            localStorage.removeItem('chatSessionId');
+            currentSessionId = null;
+            chatContainer.innerHTML = '';
+            ollamaResponseDiv.innerHTML = '';
+            copyStatusSpan.style.display = 'none';
+            fileStatusDiv.textContent = '';
+            downloadContainer.innerHTML = '';
+            attachedFile = { type: null, data: null, name: null };
+            responseHistory = [];
+            currentResponseIndex = -1;
+            updateButtonStates();
+            appendMessage('system', 'New chat started. Session cleared.');
+            console.log("Local sessionId cleared. Ready for new chat.");
+        }
+        if (currentSessionId) {
+            appendMessage('system', `Continuing previous chat (Session ID: ${currentSessionId.substring(0, 8)}...)`);
+        } else {
+            appendMessage('system', 'Start a new chat!');
+        }
+        updateButtonStates();
+    </script>
+    <footer style="font-family: Arial, sans-serif; font-size: 0.7em; text-align: center; color: #888; margin-top: 20px;">
+    <p>&copy; coded by Bijoy Kunnappillil</p>
+</footer>
+</body>
+</html>

@@ -1,0 +1,333 @@
+/*
+ * bijoy-gpt-react
+ * Main Stylesheet
+ *
+ * This stylesheet is designed to be clean, organized, and easy to read.
+ * It's structured into logical sections for clarity.
+ */
+
+/* ====================
+ * Global and Layout
+ * ==================== */
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f4f4f4;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh; /* Ensure the body fills the entire viewport height */
+}
+
+h1 {
+    color: #333;
+    margin-bottom: 20px;
+}
+
+h2 {
+    margin: 0 0 10px 0;
+    color: #333;
+}
+
+#main-content-wrapper {
+    display: flex;
+    width: 90%;
+    max-width: 1200px;
+    height: 100%; /* Changed to 100% to fill space */
+    background-color: #fff;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    overflow: hidden;
+    flex-grow: 1; /* This is the key change: it allows the main content to take all available space and push the footer down. */
+}
+
+#chat-section,
+#response-section {
+    flex: 1;
+    padding: 20px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+}
+
+#chat-section {
+    border-right: 1px solid #eee;
+}
+
+/* ====================
+ * Chat History Area
+ * ==================== */
+
+#chat-container {
+    flex-grow: 1;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    padding: 10px;
+    overflow-y: auto;
+    margin-bottom: 15px;
+    background-color: #e9e9e9;
+    min-height: 300px;
+    max-height: 500px;
+}
+
+.message {
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    border-radius: 15px;
+    max-width: 80%;
+    word-wrap: break-word;
+}
+
+.message.user {
+    background-color: #d1e7dd;
+    align-self: flex-end;
+    margin-left: auto;
+    text-align: right;
+}
+
+.message.assistant {
+    background-color: #dbeaff;
+    align-self: flex-start;
+    margin-right: auto;
+    text-align: left;
+}
+
+.message.system {
+    background-color: #f0f0f0;
+    color: #666;
+    font-style: italic;
+    text-align: center;
+    align-self: center;
+}
+
+/* ====================
+ * Input & Controls
+ * ==================== */
+
+#input-section {
+    display: flex;
+    flex-direction: column;
+}
+
+#user-input {
+    width: 100%;
+    min-height: 80px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    resize: vertical;
+    margin-bottom: 10px;
+    box-sizing: border-box;
+}
+
+.button-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+    justify-content: space-between; /* Better button distribution */
+}
+
+.button-row button {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    transition: background-color 0.2s ease;
+}
+
+.button-row button:not(.icon-button) {
+    background-color: #007bff;
+    color: white;
+}
+
+.button-row button:not(.icon-button):hover {
+    background-color: #0056b3;
+}
+
+.button-row button:disabled {
+    background-color: #cccccc !important; /* Use !important to override other rules */
+    cursor: not-allowed;
+    color: #666;
+}
+
+.button-row .icon-button {
+    background-color: #6c757d;
+    color: white;
+}
+
+.button-row .icon-button:hover {
+    background-color: #5a6268;
+}
+
+#file-status {
+    color: #007bff;
+    font-style: italic;
+    margin-top: 5px;
+    text-align: center;
+}
+
+/* ====================
+ * Response Section
+ * ==================== */
+
+#response-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+#copy-button {
+    padding: 8px 12px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    background-color: #28a745;
+    color: white;
+}
+
+#copy-button:hover {
+    background-color: #218838;
+}
+
+#copy-status {
+    display: none;
+    color: #28a745;
+    font-size: 0.9em;
+    margin-left: 10px;
+}
+
+#ollama-response {
+    flex-grow: 1;
+    min-height: 300px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    padding: 10px;
+    overflow-y: auto;
+    background-color: #f9f9f9;
+    box-sizing: border-box;
+    /* Styles for rendering markdown content */
+    font-size: 1em;
+    line-height: 1.5;
+    white-space: pre-wrap; /* This is the key for line breaks */
+    word-break: break-word; /* Prevents overflow with long words */
+}
+
+/* ====================
+ * Markdown and Rich Text Styling
+ * ==================== */
+#ollama-response p {
+    margin: 0 0 1em 0;
+}
+#ollama-response h1,
+#ollama-response h2,
+#ollama-response h3,
+#ollama-response h4 {
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    font-weight: bold;
+}
+#ollama-response h2 {
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+}
+#ollama-response ul,
+#ollama-response ol {
+    margin: 0 0 1em 2em;
+    padding: 0;
+}
+#ollama-response pre,
+#ollama-response code {
+    background-color: #eef;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-family: 'Courier New', Courier, monospace;
+}
+#ollama-response pre {
+    padding: 10px;
+    overflow-x: auto;
+    border: 1px solid #ccc;
+    background-color: #f0f0f0;
+}
+#ollama-response strong,
+#ollama-response b {
+    font-weight: bold;
+}
+#ollama-response em,
+#ollama-response i {
+    font-style: italic;
+}
+
+/* ====================
+ * Download & Navigation
+ * ==================== */
+
+#response-header h2 {
+    margin: 0;
+}
+
+#response-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+#response-nav button {
+    background-color: #007bff;
+    color: white;
+    font-size: 1.2em;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    padding: 0;
+    border: none;
+}
+
+#response-nav button:disabled {
+    background-color: #cccccc;
+}
+
+#response-counter {
+    font-weight: bold;
+    color: #555;
+    min-width: 60px;
+    text-align: center;
+}
+
+#download-container a {
+    margin-top: 15px;
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: #17a2b8;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+}
+
+#download-container a:hover {
+    background-color: #138496;
+}
+
+/* ====================
+ * Footer
+ * ==================== */
+
+.footer {
+    font-family: Arial, sans-serif;
+    font-size: 0.7em;
+    text-align: center;
+    color: #888;
+    margin-top: 20px; /* Add some spacing above the footer */
+    padding: 10px 0;
+}
