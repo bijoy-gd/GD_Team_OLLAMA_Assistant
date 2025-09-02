@@ -33,13 +33,15 @@ Install Node.js dependencies:
 
 npm install
 
-Running the Application
+>>Running the Application:
 
-Once all prerequisites and dependencies are installed, you can start the server.node server.js
+Once all prerequisites and dependencies are installed, you can start the server by entering below command in terminal:
 
-The server will start on http://localhost:3000. 
+node server.js
 
-It will also automatically attempt to open this URL in your default web browser.
+The server will start on http://localhost:3000 
+
++ It will also automatically attempt to open this URL in your default web browser.
 
 
 >>How to Use
@@ -64,5 +66,6 @@ const OLLAMA_DEFAULT_MODEL = "llama3.2-vision:11b";
 const OLLAMA_MULTIMODAL_MODEL = "llama3.2-vision:11b";
 
 You can find a list of available models on the Ollama website(https://ollama.ai/library). 
+
 
 For multimodal tasks like image analysis, ensure you choose a model with vision capabilities.
