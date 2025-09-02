@@ -68,8 +68,12 @@ const OLLAMA_MULTIMODAL_MODEL = "llama3.2-vision:11b";
 You can find a list of available models on the Ollama website(https://ollama.ai/library). 
 
 
-For multimodal tas<img width="1509" height="830" alt="Screenshot 2025-09-02 at 12 39 46 PM" src="https://github.com/user-attachments/assets/2deb2ad7-fa3d-49cc-97cc-f070df5a5f4e" />
-ks like image analysis, ensure you choose a model with vision capabilities.
+For multimodal tasks like image analysis, ensure you choose a model with vision capabilities.
+
+Preview:
+
+<img width="1509" height="830" alt="Screenshot 2025-09-02 at 12 39 46 PM" src="https://github.com/user-attachments/assets/2deb2ad7-fa3d-49cc-97cc-f070df5a5f4e" />
+
 
 
 
